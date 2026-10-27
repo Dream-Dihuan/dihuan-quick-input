@@ -1,74 +1,156 @@
-import { app, shell, BrowserWindow, ipcMain } from 'electron'
-import { join } from 'path'
-import { electronApp, optimizer, is } from '@electron-toolkit/utils'
-import icon from '../../resources/icon.png?asset'
+import { app, dialog, globalShortcut } from 'electron'
+import { electronApp, optimizer } from '@electron-toolkit/utils'
+import { CommandRegistry } from './commands/registry'
+import { PluginHost } from './commands/plugin-host'
+import { ConnectionServer } from './connection/connection-server'
+import { initializeAppData, type InitializedAppData } from './config/initialize'
+import { WindowManager } from './app/windows'
+import { HotkeyManager } from './app/hotkey-manager'
+import { AppTray } from './app/tray'
+import { getLaunchAtLogin, isHiddenStart, setLaunchAtLogin } from './app/login-item'
+import { AppService } from './services/app-service'
+import { registerIpcHandlers } from './ipc/register-handlers'
+import { ipcChannels } from '@shared/ipc'
 
-function createWindow(): void {
-  // Create the browser window.
-  const mainWindow = new BrowserWindow({
-    width: 900,
-    height: 670,
-    show: false,
-    autoHideMenuBar: true,
-    ...(process.platform === 'linux' ? { icon } : {}),
-    webPreferences: {
-      preload: join(__dirname, '../preload/index.js'),
-      sandbox: false
-    }
+let windows: WindowManager | null = null
+let appService: AppService | null = null
+let tray: AppTray | null = null
+let disposeIpc: (() => void) | null = null
+let shutdownStarted = false
+let shutdownFinished = false
+
+const gotSingleInstanceLock = app.requestSingleInstanceLock()
+if (!gotSingleInstanceLock) {
+  app.quit()
+} else {
+  app.on('second-instance', () => {
+    windows?.showSettings()
   })
-
-  mainWindow.on('ready-to-show', () => {
-    mainWindow.show()
-  })
-
-  mainWindow.webContents.setWindowOpenHandler((details) => {
-    shell.openExternal(details.url)
-    return { action: 'deny' }
-  })
-
-  // HMR for renderer base on electron-vite cli.
-  // Load the remote URL for development or the local html file for production.
-  if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
-    mainWindow.loadURL(process.env['ELECTRON_RENDERER_URL'])
-  } else {
-    mainWindow.loadFile(join(__dirname, '../renderer/index.html'))
-  }
+  app.whenReady().then(bootstrap).catch(handleFatalStartup)
 }
 
-// This method will be called when Electron has finished
-// initialization and is ready to create browser windows.
-// Some APIs can only be used after this event occurs.
-app.whenReady().then(() => {
-  // Set app user model id for windows
-  electronApp.setAppUserModelId('com.electron')
+async function bootstrap(): Promise<void> {
+  electronApp.setAppUserModelId('com.dihuan.quickinput')
+  const startHidden = isHiddenStart()
 
-  // Default open or close DevTools by F12 in development
-  // and ignore CommandOrControl + R in production.
-  // see https://github.com/alex8088/electron-toolkit/tree/master/packages/utils
+  let data: InitializedAppData
+  try {
+    data = await initializeAppData(app.getPath('userData'))
+  } catch (error) {
+    handleFatalStartup(
+      new Error(`无法初始化应用数据目录：${error instanceof Error ? error.message : String(error)}`)
+    )
+    return
+  }
+
   app.on('browser-window-created', (_, window) => {
     optimizer.watchWindowShortcuts(window)
   })
 
-  // IPC test
-  ipcMain.on('ping', () => console.log('pong'))
-
-  createWindow()
-
-  app.on('activate', function () {
-    // On macOS it's common to re-create a window in the app when the
-    // dock icon is clicked and there are no other windows open.
-    if (BrowserWindow.getAllWindows().length === 0) createWindow()
+  windows = new WindowManager()
+  const registry = new CommandRegistry()
+  const pluginHost = new PluginHost(data.paths.pluginsDirectory)
+  const connection = new ConnectionServer(data.loadResult.config.server.token, {
+    appVersion: app.getVersion()
   })
-})
+  const hotkeys = new HotkeyManager(
+    {
+      register: (accelerator, callback) => globalShortcut.register(accelerator, callback),
+      unregister: (accelerator) => globalShortcut.unregister(accelerator),
+      isRegistered: (accelerator) => globalShortcut.isRegistered(accelerator)
+    },
+    () => windows?.toggleOverlay()
+  )
 
-// Quit when all windows are closed, except on macOS. There, it's common
-// for applications and their menu bar to stay active until the user quits
-// explicitly with Cmd + Q.
-app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') {
-    app.quit()
+  appService = new AppService({
+    store: data.store,
+    loadResult: data.loadResult,
+    pluginHost,
+    pluginDirectory: data.paths.pluginsDirectory,
+    hotkeys,
+    connection,
+    windows,
+    registry,
+    setLaunchAtLogin,
+    getLaunchAtLogin,
+    onStateChanged: (state) => {
+      const window = windows?.getSettingsWindow()
+      if (window && !window.isDestroyed()) {
+        window.webContents.send(ipcChannels.eventSettingsState, state)
+      }
+    }
+  })
+
+  disposeIpc = registerIpcHandlers({ service: appService, windows })
+  windows.create()
+  tray = new AppTray({
+    showSettings: () => windows?.showSettings(),
+    reloadPlugins: () => {
+      void appService?.reloadPlugins().catch((error) => {
+        windows?.sendAppError({
+          code: 'PLUGIN_ERROR',
+          message: '重新加载插件失败',
+          details: error instanceof Error ? error.message : String(error)
+        })
+      })
+    },
+    quit: () => app.quit()
+  })
+  tray.create()
+
+  await appService.initialize()
+
+  if (startHidden) {
+    if (process.platform === 'darwin') app.dock?.hide()
+  } else {
+    windows.showSettings()
   }
+}
+
+function handleFatalStartup(error: unknown): void {
+  const message = error instanceof Error ? error.message : String(error)
+  console.error(`[dihuan-quick-input] startup failed: ${message}`)
+  dialog.showErrorBox('Dihuan Quick Input 启动失败', message)
+  app.quit()
+}
+
+app.on('window-all-closed', () => {
+  // The tray application stays alive until the user explicitly quits.
 })
 
-// In this file you can include the rest of your app's specific main process
-// code. You can also put them in separate files and require them here.
+app.on('activate', () => {
+  windows?.showSettings()
+})
+
+app.on('before-quit', (event) => {
+  if (shutdownFinished) return
+  event.preventDefault()
+  if (shutdownStarted) return
+  shutdownStarted = true
+  windows?.setQuitting(true)
+
+  void (async () => {
+    try {
+      await appService?.dispose()
+    } catch (error) {
+      console.error(
+        `[dihuan-quick-input] shutdown cleanup failed: ${
+          error instanceof Error ? error.message : String(error)
+        }`
+      )
+    }
+    disposeIpc?.()
+    tray?.destroy()
+    windows?.destroy()
+    tray = null
+    appService = null
+    windows = null
+    disposeIpc = null
+    shutdownFinished = true
+    app.quit()
+  })()
+})
+
+app.on('will-quit', () => {
+  globalShortcut.unregisterAll()
+})

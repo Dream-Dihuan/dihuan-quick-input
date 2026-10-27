@@ -1,6 +1,10 @@
 node_modules
 dist
+dist-extension
 out
+release
+test-results
+playwright-report
 .DS_Store
 .eslintcache
 *.log*

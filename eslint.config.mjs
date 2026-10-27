@@ -5,7 +5,7 @@ import eslintPluginVue from 'eslint-plugin-vue'
 import vueParser from 'vue-eslint-parser'
 
 export default defineConfig(
-  { ignores: ['**/node_modules', '**/dist', '**/out'] },
+  { ignores: ['**/node_modules', '**/dist', '**/dist-extension', '**/out'] },
   tseslint.configs.recommended,
   eslintPluginVue.configs['flat/recommended'],
   {
@@ -19,6 +19,12 @@ export default defineConfig(
         extraFileExtensions: ['.vue'],
         parser: tseslint.parser
       }
+    }
+  },
+  {
+    files: ['scripts/**/*.mjs'],
+    rules: {
+      '@typescript-eslint/explicit-function-return-type': 'off'
     }
   },
   {

@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Dihuan Quick Input</title>
+    <link rel="stylesheet" href="popup.css" />
+  </head>
+  <body>
+    <main class="popup">
+      <h1>Dihuan Quick Input</h1>
+      <p class="hint">从桌面应用的“浏览器连接”区域复制配对令牌，然后粘贴到这里。</p>
+      <label class="field">
+        <span>配对令牌</span>
+        <input id="token" type="password" autocomplete="off" spellcheck="false" />
+      </label>
+      <div class="actions">
+        <button id="save" type="button" class="primary">保存并连接</button>
+        <button id="clear" type="button">清除</button>
+      </div>
+      <p id="status" class="status" aria-live="polite">未配置</p>
+    </main>
+    <script src="popup.js"></script>
+  </body>
+</html>

@@ -1,0 +1,19 @@
+export const ipcChannels = {
+  settingsGetState: 'settings:get-state',
+  settingsUpdateGeneral: 'settings:update-general',
+  aliasesCreate: 'aliases:create',
+  aliasesUpdate: 'aliases:update',
+  aliasesDelete: 'aliases:delete',
+  pluginsList: 'plugins:list',
+  pluginsReload: 'plugins:reload',
+  pluginsOpenDirectory: 'plugins:open-directory',
+  connectionGetStatus: 'connection:get-status',
+  connectionRotateToken: 'connection:rotate-token',
+  overlaySubmit: 'overlay:submit',
+  overlayClose: 'overlay:close',
+  onboardingComplete: 'onboarding:complete',
+  eventSettingsState: 'settings:state-changed',
+  eventOverlayOpen: 'overlay:open',
+  eventOverlayResult: 'overlay:result',
+  eventAppError: 'app:error'
+} as const
