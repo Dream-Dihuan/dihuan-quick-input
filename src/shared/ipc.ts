@@ -4,9 +4,11 @@ import {
   aliasSchema,
   aliasValueSchema,
   appConfigSchema,
+  folderNameSchema,
   insertModeSchema,
   type Alias,
-  type AppConfig
+  type AppConfig,
+  type Folder
 } from './config'
 import type { AppErrorInfo, ErrorCode } from './errors'
 
@@ -50,8 +52,15 @@ export interface RuntimeStatus {
   configBackupPath?: string
 }
 
+export interface FolderTreeNode extends Folder {
+  children: FolderTreeNode[]
+  aliases: Alias[]
+}
+
 export interface SettingsState {
   config: AppConfig
+  folders: Folder[]
+  folderTree: FolderTreeNode[]
   plugins: PluginInfo[]
   pluginDirectory: string
   commands: CommandSummary[]
@@ -82,7 +91,8 @@ export type UpdateGeneralInput = z.infer<typeof updateGeneralSchema>
 export const aliasCreateSchema = z.object({
   command: aliasCommandSchema,
   value: aliasValueSchema,
-  enabled: z.boolean().optional()
+  enabled: z.boolean().optional(),
+  folderId: z.string().min(1).nullable().optional()
 })
 export type AliasCreateInput = z.infer<typeof aliasCreateSchema>
 
@@ -90,7 +100,8 @@ export const aliasUpdateSchema = z.object({
   id: z.string().min(1),
   command: aliasCommandSchema.optional(),
   value: aliasValueSchema.optional(),
-  enabled: z.boolean().optional()
+  enabled: z.boolean().optional(),
+  folderId: z.string().min(1).nullable().optional()
 })
 export type AliasUpdateInput = z.infer<typeof aliasUpdateSchema>
 
@@ -98,6 +109,26 @@ export const aliasDeleteSchema = z.object({
   id: z.string().min(1)
 })
 export type AliasDeleteInput = z.infer<typeof aliasDeleteSchema>
+
+export const folderCreateSchema = z.object({
+  name: folderNameSchema,
+  parentId: z.string().min(1).nullable().optional()
+})
+export type FolderCreateInput = z.infer<typeof folderCreateSchema>
+
+export const folderUpdateSchema = z.object({
+  id: z.string().min(1),
+  name: folderNameSchema.optional(),
+  parentId: z.string().min(1).nullable().optional(),
+  confirmNonEmptyDelete: z.boolean().optional()
+})
+export type FolderUpdateInput = z.infer<typeof folderUpdateSchema>
+
+export const folderDeleteSchema = z.object({
+  id: z.string().min(1),
+  moveContents: z.boolean().optional()
+})
+export type FolderDeleteInput = z.infer<typeof folderDeleteSchema>
 
 export const overlaySubmitSchema = z.object({
   text: z.string().max(2_000)
@@ -117,6 +148,11 @@ export interface SettingsApi {
     create(input: AliasCreateInput): Promise<IpcResult<Alias>>
     update(input: AliasUpdateInput): Promise<IpcResult<Alias>>
     remove(input: AliasDeleteInput): Promise<IpcResult<SettingsState>>
+  }
+  folders: {
+    create(input: FolderCreateInput): Promise<IpcResult<Folder>>
+    update(input: FolderUpdateInput): Promise<IpcResult<Folder>>
+    remove(input: FolderDeleteInput): Promise<IpcResult<SettingsState>>
   }
   plugins: {
     list(): Promise<IpcResult<PluginInfo[]>>

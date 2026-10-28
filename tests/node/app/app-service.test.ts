@@ -175,3 +175,103 @@ describe('AppService settings mutations', () => {
     await service.dispose()
   })
 })
+
+describe('AppService folder operations', () => {
+  it('creates nested folders and rejects duplicate sibling names', async () => {
+    const { service } = makeDependencies()
+    await service.initialize()
+
+    const work = await service.createFolder({ name: 'Work' })
+    const drafts = await service.createFolder({ name: 'Drafts', parentId: work.id })
+    expect(drafts.parentId).toBe(work.id)
+
+    await expect(service.createFolder({ name: 'drafts', parentId: work.id })).rejects.toMatchObject(
+      {
+        code: 'INVALID_PAYLOAD'
+      }
+    )
+    // The same name is fine under a different parent.
+    await expect(service.createFolder({ name: 'Drafts', parentId: null })).resolves.toMatchObject({
+      name: 'Drafts',
+      parentId: null
+    })
+
+    await expect(
+      service.createFolder({ name: 'Nowhere', parentId: 'missing' })
+    ).rejects.toMatchObject({ code: 'INVALID_PAYLOAD' })
+    await service.dispose()
+  })
+
+  it('renames folders and prevents cyclic moves', async () => {
+    const { service } = makeDependencies()
+    await service.initialize()
+
+    const parent = await service.createFolder({ name: 'Parent' })
+    const child = await service.createFolder({ name: 'Child', parentId: parent.id })
+
+    await expect(service.updateFolder({ id: parent.id, name: 'Renamed' })).resolves.toMatchObject({
+      id: parent.id,
+      name: 'Renamed'
+    })
+    await expect(
+      service.updateFolder({ id: parent.id, parentId: parent.id })
+    ).rejects.toMatchObject({
+      code: 'INVALID_PAYLOAD'
+    })
+    await expect(service.updateFolder({ id: parent.id, parentId: child.id })).rejects.toMatchObject(
+      {
+        code: 'INVALID_PAYLOAD'
+      }
+    )
+    await service.dispose()
+  })
+
+  it('refuses to delete a non-empty folder without explicit relocation', async () => {
+    const { service } = makeDependencies()
+    await service.initialize()
+
+    const folder = await service.createFolder({ name: 'Inbox' })
+    const child = await service.createFolder({ name: 'Nested', parentId: folder.id })
+    const alias = await service.createAlias({ command: 'nick', value: '小明', folderId: folder.id })
+
+    await expect(service.deleteFolder(folder.id)).rejects.toMatchObject({ code: 'INVALID_PAYLOAD' })
+    expect(service.getState().folders.some((item) => item.id === folder.id)).toBe(true)
+
+    const state = await service.deleteFolder(folder.id, true)
+    expect(state.folders.some((item) => item.id === folder.id)).toBe(false)
+    expect(state.folders.find((item) => item.id === child.id)?.parentId).toBeNull()
+    expect(state.config.aliases.find((item) => item.id === alias.id)?.folderId).toBeNull()
+    await service.dispose()
+  })
+
+  it('keeps command lookup global across folders', async () => {
+    const { service } = makeDependencies()
+    await service.initialize()
+
+    const folder = await service.createFolder({ name: 'Work' })
+    await service.createAlias({ command: 'nick', value: '小明', folderId: folder.id })
+
+    await expect(
+      service.createAlias({ command: 'NICK', value: '重复', folderId: null })
+    ).rejects.toMatchObject({ code: 'INVALID_PAYLOAD' })
+    await expect(service.submitOverlay('nick')).resolves.toEqual({ ok: true })
+    await service.dispose()
+  })
+
+  it('builds a sorted folder tree snapshot with root mappings outside folders', async () => {
+    const { service } = makeDependencies()
+    await service.initialize()
+
+    const work = await service.createFolder({ name: 'Work' })
+    await service.createFolder({ name: 'Archive', parentId: work.id })
+    await service.createFolder({ name: 'Home' })
+    await service.createAlias({ command: 'nick', value: '小明', folderId: work.id })
+
+    const tree = service.getState().folderTree
+    expect(tree.map((node) => node.name)).toEqual(['Home', 'Work'])
+    expect(tree[1]?.children.map((node) => node.name)).toEqual(['Archive'])
+    expect(tree[1]?.aliases.map((alias) => alias.command)).toEqual(['nick'])
+    expect(tree[0]?.aliases).toEqual([])
+    await service.dispose()
+  })
+})

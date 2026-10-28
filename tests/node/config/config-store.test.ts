@@ -49,7 +49,7 @@ describe('config store', () => {
     const config = createDefaultConfig(FIXED_TOKEN)
     config.hotkey = 'CommandOrControl+Alt+Space'
     config.insertMode = 'replace'
-    config.aliases = [{ id: 'a1', command: 'name', value: '张三', enabled: true }]
+    config.aliases = [{ id: 'a1', command: 'name', value: '张三', enabled: true, folderId: null }]
     await store().save(config)
 
     const reloaded = await store().load()
@@ -70,12 +70,12 @@ describe('config store', () => {
   })
 
   it('recovers from an unsupported future version', async () => {
-    const future = { ...createDefaultConfig(FIXED_TOKEN), version: 2 }
+    const future = { ...createDefaultConfig(FIXED_TOKEN), version: 3 }
     await writeFile(configPath, JSON.stringify(future), 'utf8')
     const result = await store().load()
 
     expect(result.status).toBe('recovered')
-    expect(result.config.version).toBe(1)
+    expect(result.config.version).toBe(2)
     expect(result.backupPath).toBeTruthy()
     expect(result.warnings.join('\n')).toContain('高于当前支持')
   })
@@ -86,7 +86,7 @@ describe('config store', () => {
       hotkey: 'CommandOrControl+Alt+Space',
       insertMode: 'replace',
       aliases: [
-        { id: 'a1', command: 'name', value: '张三', enabled: true },
+        { id: 'a1', command: 'name', value: '张三', enabled: true, folderId: null },
         { id: 'a2', command: 'email', enabled: true },
         { id: 'a3', command: 'NAME', value: '李四', enabled: true }
       ]
@@ -98,7 +98,7 @@ describe('config store', () => {
     expect(result.config.hotkey).toBe('CommandOrControl+Alt+Space')
     expect(result.config.insertMode).toBe('replace')
     expect(result.config.aliases).toEqual([
-      { id: 'a1', command: 'name', value: '张三', enabled: true }
+      { id: 'a1', command: 'name', value: '张三', enabled: true, folderId: null }
     ])
     expect(result.warnings.length).toBeGreaterThan(0)
 
@@ -114,8 +114,44 @@ describe('config store', () => {
     const result = await store().load()
 
     expect(result.status).toBe('partial')
-    expect(result.config.version).toBe(1)
+    expect(result.config.version).toBe(2)
     expect(result.warnings.join('\n')).toContain('缺少版本号')
+  })
+
+  it('migrates a version 1 flat configuration to folders and root mappings', async () => {
+    const legacy = {
+      version: 1,
+      onboardingComplete: true,
+      hotkey: 'CommandOrControl+Shift+Space',
+      insertMode: 'caret',
+      launchAtLogin: false,
+      server: { token: FIXED_TOKEN },
+      plugins: { enabled: true },
+      aliases: [{ id: 'a1', command: 'name', value: '张三', enabled: true }]
+    }
+    await writeFile(configPath, JSON.stringify(legacy), 'utf8')
+    const result = await store().load()
+
+    expect(result.status).toBe('ok')
+    expect(result.config.version).toBe(2)
+    expect(result.config.folders).toEqual([])
+    expect(result.config.aliases).toEqual([
+      { id: 'a1', command: 'name', value: '张三', enabled: true, folderId: null }
+    ])
+  })
+
+  it('persists folders and mapping folder ids across restarts', async () => {
+    const config = createDefaultConfig(FIXED_TOKEN)
+    config.folders = [
+      { id: 'f1', name: 'Work', parentId: null },
+      { id: 'f2', name: 'Drafts', parentId: 'f1' }
+    ]
+    config.aliases = [{ id: 'a1', command: 'name', value: '张三', enabled: true, folderId: 'f2' }]
+    await store().save(config)
+
+    const reloaded = await store().load()
+    expect(reloaded.status).toBe('ok')
+    expect(reloaded.config).toEqual(config)
   })
 
   it('rejects invalid writes', async () => {

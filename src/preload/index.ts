@@ -24,6 +24,11 @@ const api: DesktopApi = {
       update: (input) => invoke(ipcChannels.aliasesUpdate, input),
       remove: (input) => invoke<SettingsState>(ipcChannels.aliasesDelete, input)
     },
+    folders: {
+      create: (input) => invoke(ipcChannels.foldersCreate, input),
+      update: (input) => invoke(ipcChannels.foldersUpdate, input),
+      remove: (input) => invoke<SettingsState>(ipcChannels.foldersDelete, input)
+    },
     plugins: {
       list: () => invoke(ipcChannels.pluginsList),
       reload: () => invoke<SettingsState>(ipcChannels.pluginsReload, {}),

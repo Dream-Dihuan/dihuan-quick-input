@@ -1,4 +1,4 @@
-export const CURRENT_CONFIG_VERSION = 1
+export const CURRENT_CONFIG_VERSION = 2
 
 export type RawConfig = Record<string, unknown>
 
@@ -14,7 +14,20 @@ type Migration = (raw: RawConfig) => RawConfig
  * Migration entry point. v1 is the first released schema; future versions can
  * be added here and applied in order.
  */
-export const configMigrations: Record<number, Migration> = {}
+export const configMigrations: Record<number, Migration> = {
+  1: (raw) => ({
+    ...raw,
+    version: 2,
+    folders: Array.isArray(raw.folders) ? raw.folders : [],
+    aliases: Array.isArray(raw.aliases)
+      ? raw.aliases.map((alias) =>
+          alias && typeof alias === 'object' && !Array.isArray(alias) && !('folderId' in alias)
+            ? { ...alias, folderId: null }
+            : alias
+        )
+      : raw.aliases
+  })
+}
 
 export function migrateRawConfig(value: unknown): MigrationResult {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
@@ -31,11 +44,15 @@ export function migrateRawConfig(value: unknown): MigrationResult {
 
   if (version === undefined) {
     warnings.push('配置缺少版本号，已按当前版本恢复')
-    raw.version = CURRENT_CONFIG_VERSION
-    return { raw, warnings, unsupported: false }
+    raw.version = 1
   }
 
-  if (typeof version !== 'number' || !Number.isInteger(version) || version < 1) {
+  const normalizedVersion = raw.version
+  if (
+    typeof normalizedVersion !== 'number' ||
+    !Number.isInteger(normalizedVersion) ||
+    normalizedVersion < 1
+  ) {
     return {
       raw: {},
       warnings: ['配置版本号非法，已使用默认配置'],
@@ -43,16 +60,16 @@ export function migrateRawConfig(value: unknown): MigrationResult {
     }
   }
 
-  if (version > CURRENT_CONFIG_VERSION) {
+  if (normalizedVersion > CURRENT_CONFIG_VERSION) {
     return {
       raw: {},
-      warnings: [`配置版本 ${version} 高于当前支持的版本 ${CURRENT_CONFIG_VERSION}`],
+      warnings: [`配置版本 ${normalizedVersion} 高于当前支持的版本 ${CURRENT_CONFIG_VERSION}`],
       unsupported: true
     }
   }
 
   let current = raw
-  let currentVersion = version
+  let currentVersion = normalizedVersion
   while (currentVersion < CURRENT_CONFIG_VERSION) {
     const migration = configMigrations[currentVersion]
     if (!migration) {

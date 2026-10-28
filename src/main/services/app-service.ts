@@ -1,9 +1,12 @@
 import { randomUUID } from 'node:crypto'
-import type { Alias, AppConfig, InsertMode } from '@shared/config'
+import type { Alias, AppConfig, Folder, InsertMode } from '@shared/config'
 import { appError, type AppErrorInfo } from '@shared/errors'
 import type {
   AliasCreateInput,
   AliasUpdateInput,
+  FolderCreateInput,
+  FolderUpdateInput,
+  FolderTreeNode,
   OverlayResult,
   PluginInfo,
   SettingsState,
@@ -92,6 +95,8 @@ export class AppService {
     const snapshot = this.dependencies.connection.getSnapshot()
     return {
       config: structuredClone(this.config),
+      folders: this.config.folders.map((folder) => ({ ...folder })),
+      folderTree: this.buildFolderTree(),
       plugins: this.pluginInfos.map((plugin) => ({
         ...plugin,
         commands: [...plugin.commands]
@@ -185,13 +190,127 @@ export class AppService {
     return this.getState()
   }
 
+  private buildFolderTree(): FolderTreeNode[] {
+    const nodes = new Map<string, FolderTreeNode>()
+    for (const folder of this.config.folders)
+      nodes.set(folder.id, { ...folder, children: [], aliases: [] })
+    for (const alias of this.config.aliases)
+      if (alias.folderId) nodes.get(alias.folderId)?.aliases.push({ ...alias })
+    const roots: FolderTreeNode[] = []
+    for (const node of nodes.values()) {
+      const parent = node.parentId ? nodes.get(node.parentId) : undefined
+      if (parent) parent.children.push(node)
+      else roots.push(node)
+    }
+    const sort = (items: FolderTreeNode[]): void => {
+      items.sort((left, right) => left.name.localeCompare(right.name))
+      for (const item of items) {
+        item.aliases.sort((left, right) => left.command.localeCompare(right.command))
+        sort(item.children)
+      }
+    }
+    sort(roots)
+    return roots
+  }
+
+  async createFolder(input: FolderCreateInput): Promise<Folder> {
+    this.assertFolderParent(input.parentId ?? null)
+    this.assertFolderNameAvailable(input.name, input.parentId ?? null)
+    const folder: Folder = { id: randomUUID(), name: input.name, parentId: input.parentId ?? null }
+    const next = { ...this.config, folders: [...this.config.folders, folder] }
+    await this.saveConfig(next)
+    this.config = next
+    this.broadcast()
+    return { ...folder }
+  }
+
+  async updateFolder(input: FolderUpdateInput): Promise<Folder> {
+    const existing = this.config.folders.find((folder) => folder.id === input.id)
+    if (!existing) throw new AppErrorException('INVALID_PAYLOAD', '文件夹不存在')
+    const parentId = input.parentId === undefined ? existing.parentId : input.parentId
+    this.assertFolderParent(parentId, existing.id)
+    const name = input.name ?? existing.name
+    this.assertFolderNameAvailable(name, parentId, existing.id)
+    const updated = { ...existing, name, parentId }
+    const next = {
+      ...this.config,
+      folders: this.config.folders.map((folder) => (folder.id === existing.id ? updated : folder))
+    }
+    await this.saveConfig(next)
+    this.config = next
+    this.broadcast()
+    return { ...updated }
+  }
+
+  async deleteFolder(id: string, moveContents = false): Promise<SettingsState> {
+    const folder = this.config.folders.find((candidate) => candidate.id === id)
+    if (!folder) throw new AppErrorException('INVALID_PAYLOAD', '文件夹不存在')
+    const hasChildren = this.config.folders.some((candidate) => candidate.parentId === id)
+    const hasAliases = this.config.aliases.some((alias) => alias.folderId === id)
+    if ((hasChildren || hasAliases) && !moveContents) {
+      throw new AppErrorException('INVALID_PAYLOAD', '文件夹不为空，请确认移动内容后再删除')
+    }
+    const next = {
+      ...this.config,
+      folders: this.config.folders
+        .filter((candidate) => candidate.id !== id)
+        .map((candidate) =>
+          candidate.parentId === id ? { ...candidate, parentId: folder.parentId } : candidate
+        ),
+      aliases: this.config.aliases.map((alias) =>
+        alias.folderId === id ? { ...alias, folderId: folder.parentId } : alias
+      )
+    }
+    await this.saveConfig(next)
+    this.config = next
+    this.broadcast()
+    return this.getState()
+  }
+
+  private assertFolderParent(parentId: string | null, excludedId?: string): void {
+    if (
+      parentId &&
+      (!this.config.folders.some((folder) => folder.id === parentId) || parentId === excludedId)
+    ) {
+      throw new AppErrorException('INVALID_PAYLOAD', '文件夹父节点无效')
+    }
+    if (!parentId || !excludedId) return
+    let current = parentId
+    while (current) {
+      if (current === excludedId)
+        throw new AppErrorException('INVALID_PAYLOAD', '文件夹不能移动到自身或子孙节点')
+      current = this.config.folders.find((folder) => folder.id === current)?.parentId ?? ''
+    }
+  }
+
+  private assertFolderNameAvailable(
+    name: string,
+    parentId: string | null,
+    excludeId?: string
+  ): void {
+    const normalized = name.toLowerCase()
+    if (
+      this.config.folders.some(
+        (folder) =>
+          folder.id !== excludeId &&
+          folder.parentId === parentId &&
+          folder.name.toLowerCase() === normalized
+      )
+    ) {
+      throw new AppErrorException('INVALID_PAYLOAD', '同级文件夹名称已存在')
+    }
+  }
   async createAlias(input: AliasCreateInput): Promise<Alias> {
     this.assertAliasNameAvailable(input.command)
+    if (input.folderId && !this.config.folders.some((folder) => folder.id === input.folderId)) {
+      throw new AppErrorException('INVALID_PAYLOAD', '文件夹不存在')
+    }
     const alias: Alias = {
       id: randomUUID(),
       command: input.command,
       value: input.value,
-      enabled: input.enabled ?? true
+      enabled: input.enabled ?? true,
+      folderId: input.folderId ?? null
     }
     const next: AppConfig = { ...this.config, aliases: [...this.config.aliases, alias] }
     await this.saveConfig(next)
@@ -209,11 +328,19 @@ export class AppService {
     const command = input.command ?? existing.command
     this.assertAliasNameAvailable(command, input.id)
 
+    if (
+      input.folderId !== undefined &&
+      input.folderId !== null &&
+      !this.config.folders.some((folder) => folder.id === input.folderId)
+    ) {
+      throw new AppErrorException('INVALID_PAYLOAD', '文件夹不存在')
+    }
     const updated: Alias = {
       ...existing,
       command,
       value: input.value ?? existing.value,
-      enabled: input.enabled ?? existing.enabled
+      enabled: input.enabled ?? existing.enabled,
+      folderId: input.folderId === undefined ? existing.folderId : input.folderId
     }
     const next: AppConfig = {
       ...this.config,

@@ -6,6 +6,8 @@ import ConnectionSection from './ConnectionSection.vue'
 import GeneralSection from './GeneralSection.vue'
 import OnboardingCard from './OnboardingCard.vue'
 import PluginSection from './PluginSection.vue'
+import SectionBoundary from './SectionBoundary.vue'
+import { normalizeSettingsState } from './normalize-state'
 
 type FeedbackKind = 'success' | 'error'
 
@@ -32,8 +34,13 @@ async function refresh(): Promise<void> {
       loadError.value = result.error.details ?? result.error.message
       return
     }
+    const normalized = normalizeSettingsState(result.data)
+    if (!normalized) {
+      loadError.value = '设置数据格式无法识别，请重启应用'
+      return
+    }
     loadError.value = ''
-    state.value = result.data
+    state.value = normalized
   } catch (error) {
     loadError.value = error instanceof Error ? error.message : String(error)
   }
@@ -46,7 +53,9 @@ async function load(): Promise<void> {
 }
 
 function applyState(next: SettingsState): void {
-  state.value = next
+  const normalized = normalizeSettingsState(next)
+  if (!normalized) return
+  state.value = normalized
   loadError.value = ''
 }
 
@@ -130,12 +139,14 @@ onBeforeUnmount(() => {
         />
 
         <GeneralSection :state="state" @updated="applyState" @feedback="showFeedback" />
-        <AliasSection
-          :state="state"
-          @updated="applyState"
-          @refresh="refresh"
-          @feedback="showFeedback"
-        />
+        <SectionBoundary>
+          <AliasSection
+            :state="state"
+            @updated="applyState"
+            @refresh="refresh"
+            @feedback="showFeedback"
+          />
+        </SectionBoundary>
         <PluginSection :state="state" @updated="applyState" @feedback="showFeedback" />
         <ConnectionSection :state="state" @updated="applyState" @feedback="showFeedback" />
       </template>

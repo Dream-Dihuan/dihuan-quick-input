@@ -4,6 +4,9 @@ import {
   aliasCreateSchema,
   aliasDeleteSchema,
   aliasUpdateSchema,
+  folderCreateSchema,
+  folderDeleteSchema,
+  folderUpdateSchema,
   completeOnboardingSchema,
   emptyPayloadSchema,
   ipcChannels,
@@ -72,6 +75,15 @@ export function registerIpcHandlers(context: IpcContext): () => void {
   )
   register(ipcChannels.aliasesDelete, aliasDeleteSchema, 'settings', (input) =>
     context.service.deleteAlias(input.id)
+  )
+  register(ipcChannels.foldersCreate, folderCreateSchema, 'settings', (input) =>
+    context.service.createFolder(input)
+  )
+  register(ipcChannels.foldersUpdate, folderUpdateSchema, 'settings', (input) =>
+    context.service.updateFolder(input)
+  )
+  register(ipcChannels.foldersDelete, folderDeleteSchema, 'settings', (input) =>
+    context.service.deleteFolder(input.id, input.moveContents ?? false)
   )
   register(
     ipcChannels.pluginsList,

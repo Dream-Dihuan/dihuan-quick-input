@@ -7,7 +7,7 @@ describe('config schema and token generation', () => {
     const token = generatePairingToken()
     const config = createDefaultConfig(token)
     expect(config).toMatchObject({
-      version: 1,
+      version: 2,
       onboardingComplete: false,
       hotkey: 'CommandOrControl+Shift+Space',
       insertMode: 'caret',
@@ -32,6 +32,27 @@ describe('config schema and token generation', () => {
     config.aliases = [
       { id: 'a1', command: 'first name', value: '张三', enabled: true },
       { id: 'a2', command: 'name', value: '   ', enabled: true }
+    ]
+    expect(appConfigSchema.safeParse(config).success).toBe(false)
+  })
+
+  it('accepts nested folders and rejects duplicate sibling names', () => {
+    const config = createDefaultConfig(generatePairingToken())
+    config.folders = [
+      { id: 'root', name: 'Project', parentId: null },
+      { id: 'child', name: 'Drafts', parentId: 'root' },
+      { id: 'dup', name: 'drafts', parentId: 'root' }
+    ]
+    expect(appConfigSchema.safeParse(config).success).toBe(false)
+    config.folders = config.folders.slice(0, 2)
+    expect(appConfigSchema.safeParse(config).success).toBe(true)
+  })
+
+  it('rejects folder cycles and blank names', () => {
+    const config = createDefaultConfig(generatePairingToken())
+    config.folders = [
+      { id: 'a', name: ' ', parentId: null },
+      { id: 'b', name: 'B', parentId: 'b' }
     ]
     expect(appConfigSchema.safeParse(config).success).toBe(false)
   })

@@ -5,6 +5,9 @@ import {
   aliasUpdateSchema,
   completeOnboardingSchema,
   emptyPayloadSchema,
+  folderCreateSchema,
+  folderDeleteSchema,
+  folderUpdateSchema,
   overlaySubmitSchema,
   updateGeneralSchema
 } from '@shared/ipc'
@@ -24,6 +27,18 @@ describe('IPC payload validation', () => {
     expect(validatePayload(aliasDeleteSchema, { id: 'a1' }).ok).toBe(true)
     expect(validatePayload(overlaySubmitSchema, { text: 'name' }).ok).toBe(true)
     expect(validatePayload(completeOnboardingSchema, { complete: true }).ok).toBe(true)
+    expect(validatePayload(folderCreateSchema, { name: 'Work' }).ok).toBe(true)
+    expect(validatePayload(folderCreateSchema, { name: 'Work', parentId: null }).ok).toBe(true)
+    expect(validatePayload(folderUpdateSchema, { id: 'f1', name: 'Renamed' }).ok).toBe(true)
+    expect(validatePayload(folderDeleteSchema, { id: 'f1', moveContents: true }).ok).toBe(true)
+  })
+
+  it('validates folder payloads strictly', () => {
+    expect(validatePayload(folderCreateSchema, { name: '   ' }).ok).toBe(false)
+    expect(validatePayload(folderCreateSchema, { name: 'ok', parentId: 7 }).ok).toBe(false)
+    expect(validatePayload(folderUpdateSchema, { id: 'f1', name: ' ' }).ok).toBe(false)
+    expect(validatePayload(folderDeleteSchema, { id: 'f1', moveContents: 'yes' }).ok).toBe(false)
+    expect(validatePayload(folderDeleteSchema, {}).ok).toBe(false)
   })
 
   it('rejects empty update payloads and malformed commands', () => {

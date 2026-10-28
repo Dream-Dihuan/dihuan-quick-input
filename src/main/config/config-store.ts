@@ -7,8 +7,10 @@ import {
   appConfigSchema,
   createDefaultConfig,
   insertModeSchema,
+  folderSchema,
   type Alias,
-  type AppConfig
+  type AppConfig,
+  type Folder
 } from '@shared/config'
 import { migrateRawConfig } from './migrations'
 import { generatePairingToken } from './token'
@@ -40,6 +42,51 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function isToken(value: unknown): value is string {
   return typeof value === 'string' && value.length >= 16 && value.length <= 256
+}
+
+function salvageFolders(value: unknown, warnings: string[]): Folder[] {
+  if (!Array.isArray(value)) return []
+  const folders: Folder[] = []
+  const ids = new Set<string>()
+  const names = new Set<string>()
+  for (const [index, item] of value.entries()) {
+    const parsed = folderSchema.safeParse(item)
+    if (!parsed.success) {
+      warnings.push(`文件夹 #${index + 1} 无效，已忽略`)
+      continue
+    }
+    const folder = parsed.data
+    if (ids.has(folder.id)) {
+      warnings.push(`文件夹 #${index + 1} id 重复，已忽略`)
+      continue
+    }
+    const key = `${folder.parentId ?? 'root'}:${folder.name.toLowerCase()}`
+    if (names.has(key)) {
+      warnings.push(`文件夹 #${index + 1} 同级名称重复，已忽略`)
+      continue
+    }
+    ids.add(folder.id)
+    names.add(key)
+    folders.push(folder)
+  }
+  const validIds = new Set(folders.map((folder) => folder.id))
+  return folders.map((folder) => {
+    if (folder.parentId && !validIds.has(folder.parentId)) {
+      warnings.push(`文件夹「${folder.name}」父节点不存在，已移动到根层级`)
+      return { ...folder, parentId: null }
+    }
+    const visited = new Set<string>([folder.id])
+    let parentId = folder.parentId
+    while (parentId) {
+      if (visited.has(parentId)) {
+        warnings.push(`文件夹「${folder.name}」层级形成循环，已移动到根层级`)
+        return { ...folder, parentId: null }
+      }
+      visited.add(parentId)
+      parentId = folders.find((candidate) => candidate.id === parentId)?.parentId ?? null
+    }
+    return folder
+  })
 }
 
 function salvageAliases(value: unknown, warnings: string[]): Alias[] {
@@ -120,7 +167,15 @@ export function salvageConfig(
     warnings.push('配对令牌非法，已生成新令牌')
   }
 
-  config.aliases = salvageAliases(raw.aliases, warnings)
+  config.folders = salvageFolders(raw.folders, warnings)
+  const validFolderIds = new Set(config.folders.map((folder) => folder.id))
+  config.aliases = salvageAliases(raw.aliases, warnings).map((alias) => {
+    if (alias.folderId && !validFolderIds.has(alias.folderId)) {
+      warnings.push(`命令映射「${alias.command}」所属文件夹不存在，已移动到根层级`)
+      return { ...alias, folderId: null }
+    }
+    return alias
+  })
 
   if (isRecord(raw.plugins) && typeof raw.plugins.enabled === 'boolean') {
     config.plugins = { enabled: raw.plugins.enabled }
