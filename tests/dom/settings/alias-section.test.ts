@@ -363,3 +363,45 @@ describe('AliasSection tree interactions', () => {
     expect(api.folderUpdate).toHaveBeenCalledWith({ id: 'f1', name: '项目' })
   })
 })
+
+describe('mapping filter', () => {
+  it('filters by command after the debounce and restores the full tree', async () => {
+    stubApi()
+    const wrapper = mountSection()
+
+    vi.useFakeTimers()
+    try {
+      await wrapper.find('.tool-search').setValue('inner')
+      await vi.advanceTimersByTimeAsync(200)
+      expect(treeText(wrapper)).toContain('inner')
+      expect(treeText(wrapper)).not.toContain('root')
+
+      await wrapper.find('.tool-search').setValue('')
+      await vi.advanceTimersByTimeAsync(200)
+      expect(treeText(wrapper)).toContain('root')
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('shows an empty result state with a clear action', async () => {
+    stubApi()
+    const wrapper = mountSection()
+
+    vi.useFakeTimers()
+    try {
+      await wrapper.find('.tool-search').setValue('nothing-here')
+      await vi.advanceTimersByTimeAsync(200)
+      expect(wrapper.text()).toContain('没有匹配的命令映射')
+
+      const clear = [...document.querySelectorAll<HTMLButtonElement>('.button')].find(
+        (button) => button.textContent?.trim() === '清除过滤'
+      )
+      clear?.click()
+      await vi.advanceTimersByTimeAsync(200)
+      expect(treeText(wrapper)).toContain('root')
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+})

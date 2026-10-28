@@ -2,12 +2,13 @@ import { BrowserWindow, app, screen, shell } from 'electron'
 import { join } from 'node:path'
 import { is } from '@electron-toolkit/utils'
 import icon from '../../../resources/icon.png?asset'
-import { ipcChannels, type OverlayResult } from '@shared/ipc'
+import { ipcChannels, type OverlayResult, type ShellViewRequest } from '@shared/ipc'
 import type { AppErrorInfo } from '@shared/errors'
 import { OverlayFocusTracker, shouldHideOverlayOnShortcut } from './overlay-behavior'
 
 const OVERLAY_WIDTH = 560
 const OVERLAY_HEIGHT = 96
+const TITLEBAR_HEIGHT = 48
 
 function rendererUrl(page: string): string | null {
   if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
@@ -23,6 +24,31 @@ function loadPage(window: BrowserWindow, page: string): void {
   } else {
     void window.loadFile(join(__dirname, `../renderer/${page}`))
   }
+}
+
+/**
+ * The settings window draws its own titlebar. macOS keeps the traffic lights
+ * (inset so the sidebar never overlaps them); Windows keeps the native window
+ * controls via the window-controls overlay. Other platforms keep the frame.
+ */
+function settingsWindowChrome(): Partial<Electron.BrowserWindowConstructorOptions> {
+  if (process.platform === 'darwin') {
+    return {
+      titleBarStyle: 'hiddenInset',
+      trafficLightPosition: { x: 16, y: 17 }
+    }
+  }
+  if (process.platform === 'win32') {
+    return {
+      titleBarStyle: 'hidden',
+      titleBarOverlay: {
+        color: '#15161b',
+        symbolColor: '#f3f3f7',
+        height: TITLEBAR_HEIGHT
+      }
+    }
+  }
+  return {}
 }
 
 function secureWebPreferences(): Electron.WebPreferences {
@@ -61,6 +87,7 @@ export class WindowManager {
   private pendingOverlayOpen = false
   private settingsReady = false
   private pendingSettingsShow = false
+  private pendingShellView: ShellViewRequest | null = null
   private quitting = false
   private overlayFocusRetry: NodeJS.Timeout | null = null
   private readonly overlayFocus = new OverlayFocusTracker()
@@ -90,7 +117,12 @@ export class WindowManager {
     return this.overlayWindow?.webContents.id === senderId
   }
 
-  showSettings(): void {
+  /**
+   * Shows and focuses the settings window. Passing a request also tells the
+   * renderer which page to show (tray menu "设置"); plain activation keeps the
+   * page the user was last on.
+   */
+  showSettings(request?: ShellViewRequest): void {
     if (!this.settingsWindow || this.settingsWindow.isDestroyed()) {
       this.createSettingsWindow()
     }
@@ -98,6 +130,7 @@ export class WindowManager {
     if (!window) return
     if (!this.settingsReady) {
       this.pendingSettingsShow = true
+      if (request) this.pendingShellView = request
       return
     }
     this.pendingSettingsShow = false
@@ -108,6 +141,10 @@ export class WindowManager {
     window.show()
     this.activateOnMac()
     window.focus()
+
+    const shellView = request ?? this.pendingShellView
+    this.pendingShellView = null
+    if (shellView) window.webContents.send(ipcChannels.eventShellView, shellView)
   }
 
   hideSettings(): void {
@@ -192,6 +229,7 @@ export class WindowManager {
       autoHideMenuBar: true,
       title: 'Dihuan Quick Input',
       icon: process.platform === 'linux' ? icon : undefined,
+      ...settingsWindowChrome(),
       webPreferences: secureWebPreferences()
     })
     this.settingsWindow = window
@@ -217,6 +255,7 @@ export class WindowManager {
         this.settingsWindow = null
         this.settingsReady = false
         this.pendingSettingsShow = false
+        this.pendingShellView = null
       }
     })
 

@@ -2,7 +2,13 @@ import { contextBridge, ipcRenderer } from 'electron'
 import { ipcChannels } from '@shared/channels'
 // Keep this import type-only: @shared/ipc imports zod schemas, and sandboxed
 // preload scripts cannot require arbitrary packages such as zod.
-import type { DesktopApi, IpcResult, SettingsState, OverlayResult } from '@shared/ipc'
+import type {
+  DesktopApi,
+  IpcResult,
+  SettingsState,
+  OverlayResult,
+  ShellViewRequest
+} from '@shared/ipc'
 import type { AppErrorInfo } from '@shared/errors'
 
 function invoke<T>(channel: string, payload?: unknown): Promise<IpcResult<T>> {
@@ -51,7 +57,8 @@ const api: DesktopApi = {
   events: {
     onSettingsState: (callback) =>
       subscribe<SettingsState>(ipcChannels.eventSettingsState, callback),
-    onAppError: (callback) => subscribe<AppErrorInfo>(ipcChannels.eventAppError, callback)
+    onAppError: (callback) => subscribe<AppErrorInfo>(ipcChannels.eventAppError, callback),
+    onShellView: (callback) => subscribe<ShellViewRequest>(ipcChannels.eventShellView, callback)
   }
 }
 

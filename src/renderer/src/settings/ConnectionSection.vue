@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import type { SettingsState } from '@shared/ipc'
+import NoticeBox from '../components/NoticeBox.vue'
 import { copyText } from './clipboard'
 
 const props = defineProps<{ state: SettingsState }>()
@@ -47,8 +48,8 @@ function formatTime(timestamp: number): string {
   <section id="connection" class="card">
     <div class="card-heading">
       <div>
-        <h2>浏览器连接</h2>
-        <p>扩展通过本机回环 WebSocket 与桌面应用通信，不经过网络。</p>
+        <h2>浏览器扩展</h2>
+        <p>扩展通过本机回环 WebSocket 与桌面应用通信，不经过网络；配对令牌只保存在本机。</p>
       </div>
       <span
         class="status-pill"
@@ -81,7 +82,7 @@ function formatTime(timestamp: number): string {
       </div>
     </div>
 
-    <h3 class="subheading">已连接扩展</h3>
+    <h3 class="subheading">已连接的扩展</h3>
     <div v-if="props.state.connections.length === 0" class="empty-state compact">
       暂无连接。请安装扩展并在弹窗中填入令牌。
     </div>
@@ -94,11 +95,15 @@ function formatTime(timestamp: number): string {
       </li>
     </ul>
 
-    <div v-if="serverErrors.length > 0" class="warning-box">
-      <strong>最近的连接错误</strong>
-      <p v-for="error in serverErrors" :key="`${error.code}-${error.message}`">
-        {{ error.message }}<template v-if="error.details">：{{ error.details }}</template>
-      </p>
-    </div>
+    <NoticeBox
+      v-if="serverErrors.length > 0"
+      title="最近的连接错误"
+      tone="danger"
+      :items="
+        serverErrors.map((error) =>
+          error.details ? `${error.message}：${error.details}` : error.message
+        )
+      "
+    />
   </section>
 </template>

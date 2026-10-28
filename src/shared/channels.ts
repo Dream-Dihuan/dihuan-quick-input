@@ -18,5 +18,6 @@ export const ipcChannels = {
   eventSettingsState: 'settings:state-changed',
   eventOverlayOpen: 'overlay:open',
   eventOverlayResult: 'overlay:result',
-  eventAppError: 'app:error'
+  eventAppError: 'app:error',
+  eventShellView: 'shell:show-view'
 } as const

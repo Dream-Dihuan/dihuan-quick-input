@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import SettingsApp from './settings/SettingsApp.vue'
+import ShellApp from './shell/ShellApp.vue'
 </script>
 
 <template>
-  <SettingsApp />
+  <ShellApp />
 </template>

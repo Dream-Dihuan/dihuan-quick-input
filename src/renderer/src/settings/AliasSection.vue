@@ -2,6 +2,7 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import type { Alias, Folder } from '@shared/config'
 import type { SettingsState } from '@shared/ipc'
+import NoticeBox from '../components/NoticeBox.vue'
 import { hasAliasErrors, validateAliasDraft, type AliasDraftErrors } from './alias-validation'
 import {
   buildFolderTreeRows,
@@ -41,6 +42,9 @@ const saving = ref(false)
 const formVisible = ref(false)
 
 const selectedFolderId = ref<string | null>(null)
+const filterQuery = ref('')
+const activeQuery = ref('')
+let filterTimer: number | undefined
 const expandedFolders = ref(new Set<string>())
 const renaming = ref<{ id: string; draft: string } | null>(null)
 
@@ -73,8 +77,26 @@ function foldersApi(): FoldersApi | undefined {
 }
 
 const rows = computed<FolderTreeRow[]>(() =>
-  buildFolderTreeRows(folders(), aliases(), expandedFolders.value)
+  buildFolderTreeRows(folders(), aliases(), expandedFolders.value, activeQuery.value)
 )
+const filtering = computed(() => activeQuery.value.trim().length > 0)
+
+watch(filterQuery, (value) => {
+  if (filterTimer) window.clearTimeout(filterTimer)
+  filterTimer = window.setTimeout(() => {
+    filterTimer = undefined
+    activeQuery.value = value
+  }, 150)
+})
+
+function clearFilter(): void {
+  if (filterTimer) {
+    window.clearTimeout(filterTimer)
+    filterTimer = undefined
+  }
+  filterQuery.value = ''
+  activeQuery.value = ''
+}
 
 function feedback(message: string, kind: 'success' | 'error'): void {
   emit('feedback', message, kind)
@@ -462,6 +484,7 @@ onMounted(() => {
 })
 
 onBeforeUnmount(() => {
+  if (filterTimer) window.clearTimeout(filterTimer)
   window.removeEventListener('click', closeMenu)
   window.removeEventListener('keydown', onKeyDown)
   window.removeEventListener('resize', closeMenu)
@@ -475,6 +498,19 @@ onBeforeUnmount(() => {
         <h2>命令映射</h2>
         <p>静态映射优先于插件和内置函数；命令名不区分大小写。拖拽移动，右键新建 / 剪切 / 删除。</p>
       </div>
+    </div>
+
+    <div class="tool-row">
+      <input
+        v-model="filterQuery"
+        class="control tool-search"
+        type="search"
+        placeholder="过滤命令名或映射文本"
+        aria-label="过滤命令映射"
+        autocomplete="off"
+        @keydown.esc="clearFilter"
+        @keydown.enter.prevent
+      />
       <div class="heading-actions">
         <button class="button ghost" type="button" @click="createFolderIn(selectedFolderId)">
           新建文件夹
@@ -485,14 +521,13 @@ onBeforeUnmount(() => {
       </div>
     </div>
 
-    <div v-if="conflicts().length > 0" class="warning-box">
-      <strong>命令冲突</strong>
+    <NoticeBox v-if="conflicts().length > 0" title="命令冲突">
       <p v-for="conflict in conflicts()" :key="conflict.command">
         <code>{{ conflict.command }}</code> 同时存在于
         {{ conflict.sources.join(' / ') }}
         <template v-if="conflict.plugins?.length">（{{ conflict.plugins.join(', ') }}）</template>
       </p>
-    </div>
+    </NoticeBox>
 
     <dialog
       ref="dialogElement"
@@ -574,7 +609,11 @@ onBeforeUnmount(() => {
       @dragleave="onDragLeave('root')"
       @drop="onDrop($event, null)"
     >
-      <div v-if="rows.length === 0" class="empty-state">
+      <div v-if="rows.length === 0 && filtering" class="empty-state">
+        <p>没有匹配的命令映射。</p>
+        <button class="button ghost" type="button" @click="clearFilter">清除过滤</button>
+      </div>
+      <div v-else-if="rows.length === 0" class="empty-state">
         还没有命令映射。右键新建文件夹或映射，把大量命令分组管理。
       </div>
 
@@ -665,7 +704,7 @@ onBeforeUnmount(() => {
             <code class="tree-command">{{ row.alias.command }}</code>
             <span class="tree-value" :title="row.alias.value">{{ row.alias.value }}</span>
             <button
-              class="tree-toggle"
+              class="status-toggle"
               type="button"
               :class="{ on: row.alias.enabled }"
               :aria-pressed="row.alias.enabled"

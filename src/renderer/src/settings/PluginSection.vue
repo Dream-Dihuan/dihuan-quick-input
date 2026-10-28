@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import type { SettingsState } from '@shared/ipc'
+import NoticeBox from '../components/NoticeBox.vue'
 
 const props = defineProps<{ state: SettingsState }>()
 const emit = defineEmits<{
@@ -34,7 +35,7 @@ async function openDirectory(): Promise<void> {
 </script>
 
 <template>
-  <section id="plugins" class="card">
+  <section id="plugins" class="card" tabindex="-1">
     <div class="card-heading">
       <div>
         <h2>插件</h2>
@@ -52,10 +53,16 @@ async function openDirectory(): Promise<void> {
       插件目录：<code>{{ props.state.pluginDirectory }}</code>
     </p>
 
-    <div v-for="error in pluginErrors" :key="error.message" class="warning-box">
-      <strong>{{ error.message }}</strong>
-      <p v-if="error.details">{{ error.details }}</p>
-    </div>
+    <NoticeBox
+      v-if="pluginErrors.length > 0"
+      title="插件加载错误"
+      tone="danger"
+      :items="
+        pluginErrors.map((error) =>
+          error.details ? `${error.message}：${error.details}` : error.message
+        )
+      "
+    />
 
     <div v-if="props.state.plugins.length === 0" class="empty-state">
       暂无已加载插件。将 .js 文件放入插件目录后点击“重新加载插件”。

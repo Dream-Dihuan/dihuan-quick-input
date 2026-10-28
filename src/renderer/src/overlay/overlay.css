@@ -1,3 +1,5 @@
+@import '../assets/tokens.css';
+
 html,
 body,
 #overlay-app {
@@ -11,25 +13,40 @@ body,
 
 .overlay-body {
   user-select: none;
-  font-family:
-    -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif;
+  font-family: var(--font-sans);
 }
 
 .overlay-panel {
   position: relative;
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: var(--space-4);
   box-sizing: border-box;
   width: 100%;
   height: 100%;
   padding: 18px 20px;
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  border-radius: 16px;
-  background: rgba(28, 28, 32, 0.96);
-  box-shadow: 0 18px 60px rgba(0, 0, 0, 0.42);
-  color: #f5f5f7;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-xl);
+  background: var(--bg-surface-2);
+  box-shadow: var(--shadow-3);
+  color: var(--text-1);
   -webkit-app-region: no-drag;
+}
+
+/* Re-applied on every open so the panel re-enters with the shell's motion tokens. */
+.overlay-panel.is-entering {
+  animation: overlay-in var(--motion-enter) var(--ease-emphasized);
+}
+
+@keyframes overlay-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
 }
 
 .overlay-icon {
@@ -39,9 +56,9 @@ body,
   width: 36px;
   height: 36px;
   flex: 0 0 36px;
-  border-radius: 10px;
-  background: rgba(255, 255, 255, 0.1);
-  color: #b9c6ff;
+  border-radius: var(--radius-md);
+  background: var(--bg-muted-strong);
+  color: var(--accent-strong);
   font-size: 18px;
 }
 
@@ -52,12 +69,12 @@ body,
   outline: none;
   background: transparent;
   color: inherit;
-  font-size: 20px;
+  font-size: var(--text-xl);
   line-height: 1.4;
 }
 
 .overlay-input::placeholder {
-  color: rgba(235, 235, 245, 0.38);
+  color: var(--text-3);
 }
 
 .overlay-error {
@@ -66,8 +83,14 @@ body,
   bottom: 8px;
   max-width: calc(100% - 88px);
   overflow: hidden;
-  color: #ff8b8b;
-  font-size: 12px;
+  color: var(--danger);
+  font-size: var(--text-sm);
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .overlay-panel.is-entering {
+    animation: none;
+  }
 }

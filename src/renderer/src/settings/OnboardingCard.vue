@@ -7,6 +7,7 @@ const props = defineProps<{ state: SettingsState }>()
 const emit = defineEmits<{
   updated: [state: SettingsState]
   feedback: [message: string, kind: 'success' | 'error']
+  navigate: [view: 'mappings' | 'settings', focus?: 'plugins']
 }>()
 
 const completing = ref(false)
@@ -21,6 +22,10 @@ async function openDirectory(): Promise<void> {
   if (!result.ok) {
     emit('feedback', result.error.details ?? result.error.message, 'error')
   }
+}
+
+function goToScripts(): void {
+  emit('navigate', 'mappings', 'plugins')
 }
 
 async function complete(): Promise<void> {
@@ -73,8 +78,9 @@ async function complete(): Promise<void> {
           <div class="inline-actions">
             <code>{{ props.state.pluginDirectory }}</code>
             <button class="button secondary" type="button" @click="openDirectory">打开目录</button>
+            <button class="button ghost" type="button" @click="goToScripts">前往映射与脚本</button>
           </div>
-          <p>可选：将本地 .js 插件放入目录，扩展更多命令。</p>
+          <p>可选：将本地 .js 插件放入目录，扩展更多命令；脚本列表在「映射与脚本」页。</p>
         </div>
       </li>
       <li>
@@ -83,7 +89,7 @@ async function complete(): Promise<void> {
           <strong>设置快捷键</strong>
           <p>
             当前快捷键为 <kbd>{{ props.state.config.hotkey }}</kbd
-            >。可在“常规”区域录制新的组合键。
+            >。可在本页「快捷键」分组录制并应用新的组合键。
           </p>
         </div>
       </li>

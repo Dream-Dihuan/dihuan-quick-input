@@ -5,6 +5,7 @@ const input = ref('')
 const errorMessage = ref('')
 const submitting = ref(false)
 const inputElement = ref<HTMLInputElement | null>(null)
+const entering = ref(true)
 let composing = false
 
 const api = window.api
@@ -14,11 +15,20 @@ async function focusInput(): Promise<void> {
   inputElement.value?.focus()
 }
 
+async function playEntrance(): Promise<void> {
+  // Removing and re-adding the class restarts the CSS entrance animation, so
+  // every open of the overlay gets the same motion the settings shell uses.
+  entering.value = false
+  await nextTick()
+  entering.value = true
+}
+
 function reset(): void {
   input.value = ''
   errorMessage.value = ''
   submitting.value = false
   composing = false
+  void playEntrance()
   void focusInput()
 }
 
@@ -102,7 +112,7 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div class="overlay-panel">
+  <div class="overlay-panel" :class="{ 'is-entering': entering }">
     <div class="overlay-icon">⌘</div>
     <input
       ref="inputElement"

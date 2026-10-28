@@ -107,3 +107,39 @@ describe('default folder names', () => {
     expect(nextFolderName(siblings, null, 'work')).toBe('work 2')
   })
 })
+
+describe('filtered tree rows', () => {
+  it('keeps matched mappings, their ancestors and expands folders', () => {
+    const rows = buildFolderTreeRows(folders, aliases, new Set(), 'draft')
+    expect(
+      rows.map((row) => [row.kind, row.kind === 'folder' ? row.name : row.alias.command])
+    ).toEqual([
+      ['folder', 'Work'],
+      ['folder', 'Drafts'],
+      ['alias', 'draft-one']
+    ])
+    const work = rows.find((row) => row.kind === 'folder' && row.name === 'Work')
+    expect(work && work.kind === 'folder' ? work.expanded : false).toBe(true)
+  })
+
+  it('matches the mapping value, case-insensitively', () => {
+    const values: Alias[] = [
+      { id: 'x1', command: 'nick', value: 'Alice Smith', enabled: true, folderId: null },
+      { id: 'x2', command: 'mail', value: 'bob@example.com', enabled: true, folderId: null }
+    ]
+    const rows = buildFolderTreeRows([], values, new Set(), ' ALICE ')
+    expect(rows.map((row) => (row.kind === 'alias' ? row.alias.command : row.name))).toEqual([
+      'nick'
+    ])
+  })
+
+  it('returns no rows when nothing matches', () => {
+    expect(buildFolderTreeRows(folders, aliases, new Set(['work']), 'zzz')).toEqual([])
+  })
+
+  it('falls back to the full tree when the query is blank', () => {
+    expect(buildFolderTreeRows(folders, aliases, new Set(), '   ')).toEqual(
+      buildFolderTreeRows(folders, aliases, new Set())
+    )
+  })
+})

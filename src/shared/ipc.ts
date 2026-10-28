@@ -175,9 +175,15 @@ export interface OverlayApi {
   onResult(callback: (result: OverlayResult) => void): () => void
 }
 
+/** Page the main process wants the settings window to show. */
+export interface ShellViewRequest {
+  view: 'mappings' | 'settings'
+}
+
 export interface EventApi {
   onSettingsState(callback: (state: SettingsState) => void): () => void
   onAppError(callback: (error: AppErrorInfo) => void): () => void
+  onShellView(callback: (request: ShellViewRequest) => void): () => void
 }
 
 export interface DesktopApi {

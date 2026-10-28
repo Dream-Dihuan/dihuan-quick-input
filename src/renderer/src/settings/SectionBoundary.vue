@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { onErrorCaptured, ref } from 'vue'
+import NoticeBox from '../components/NoticeBox.vue'
 
 const error = ref<string | null>(null)
 const attempt = ref(0)
@@ -16,11 +17,12 @@ function retry(): void {
 </script>
 
 <template>
-  <div v-if="error" class="warning-box">
-    <strong>此区域渲染失败</strong>
+  <NoticeBox v-if="error" title="此区域渲染失败" tone="danger" default-open>
     <p>{{ error }}</p>
-    <button class="button ghost" type="button" @click="retry">重新渲染</button>
-  </div>
+    <p>
+      <button class="button ghost" type="button" @click="retry">重新渲染</button>
+    </p>
+  </NoticeBox>
   <div v-else :key="attempt">
     <slot />
   </div>

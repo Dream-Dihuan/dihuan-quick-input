@@ -84,7 +84,7 @@ async function bootstrap(): Promise<void> {
   disposeIpc = registerIpcHandlers({ service: appService, windows })
   windows.create()
   tray = new AppTray({
-    showSettings: () => windows?.showSettings(),
+    showSettings: () => windows?.showSettings({ view: 'settings' }),
     reloadPlugins: () => {
       void appService?.reloadPlugins().catch((error) => {
         windows?.sendAppError({
